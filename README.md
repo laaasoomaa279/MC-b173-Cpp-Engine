@@ -150,7 +150,7 @@ We list these bugs not as failures, but as an open engineering log. Each one has
 | **2** | **Stretched, Wide Torches** | `mesher_models.hpp` (`emitTorchModel`) | While the top and bottom caps of torches are properly sized (`2×2` sub-pixels, `hw = 0.0625f`), the 4 lateral side faces span `±0.5f` (a full block wide) instead of `±hw`, making torches look like wide crossed planks. |
 | **3** | **Awkward First-Person Hand & No `F5` Camera** | `player.hpp` (`drawFirstPersonHeld`) | The bare first-person arm rotation/translation looks stiff and slightly off-angle compared to Java, and there is **no `F5` third-person camera** yet. |
 | **4** | **Misaligned Block UVs & Static Procedural Liquids** | `asset_loader.hpp` & `blocks.hpp` | Several non-cubic blocks have rough UV mappings. Also, Water (`205`), Lava (`237`), Fire (`31`), and Portal (`14`) tiles are static procedural patterns generated at boot rather than animated multi-frame strips. |
-| **5** | ** Invisible Seam After TNT Explosions** | `redstone_pistons.hpp` (`detonateExplosion`) | When TNT destroys a block on a chunk border (`x & 15 == 0` or `15`), it only queues `{p.x >> 4, p.z >> 4}` instead of calling `enqueueBlockAndNeighbors`, leaving adjacent chunk faces unmeshed until updated. |
+| **5** | **Invisible Seam After TNT Explosions** | `redstone_pistons.hpp` (`detonateExplosion`) | When TNT destroys a block on a chunk border (`x & 15 == 0` or `15`), it only queues `{p.x >> 4, p.z >> 4}` instead of calling `enqueueBlockAndNeighbors`, leaving adjacent chunk faces unmeshed until updated. |
 
 ---
 
