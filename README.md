@@ -25,13 +25,13 @@ A lightweight voxel engine written in C++20, with no external dependencies, buil
 
 | # | Section |
 | :---: | :--- |
-| **1** | **[🖼️ 1. Visual Architecture & Pipeline](#-1-visual-architecture--pipeline)** | (#-1-visual-architecture--pipeline) |
+| **1** | **[🖼️ 1. Visual Architecture & Pipeline]([#-1-visual-architecture--pipeline])** | (#-1-visual-architecture--pipeline) |
 | **2** | **[📈 2. Paper Math vs. Screen Reality](#-2-paper-math-vs-screen-reality)** | (#-2-paper-math-vs-screen-reality) |
 | **3** | **[🐛 3. Unfiltered Bug & Glitch Report](#-3-unfiltered-bug--glitch-report)** | (#-3-unfiltered-bug--glitch-report) |
-| **4** | **[✨ 4. What Already Works Brilliantly](#-4-what-already-works-brilliantly)** | (#-4-what-already-works-brilliantly) |
-| **5** | **[🗂️ 5. Complete Repository File Tree](#-5-complete-repository-file-tree)** | (#-5-complete-repository-file-tree) |
-| **6** | **[🛠️ 6. Building, Running & Controls](#-6-building-running--controls)** | (#-6-building-running--controls) |
-| **7** | **[🗺️ 7. Roadmap to 100% Parity](#-7-roadmap-to-100-parity)** | (#-7-roadmap-to-100-parity) |
+| **4** | **[✨ 4. What Already Works Brilliantly]([#-4-what-already-works-brilliantly])** | (#-4-what-already-works-brilliantly) |
+| **5** | **[🗂️ 5. Complete Repository File Tree]([#-5-complete-repository-file-tree])** | (#-5-complete-repository-file-tree) |
+| **6** | **[🛠️ 6. Building, Running & Controls]([#-6-building-running--controls])** | (#-6-building-running--controls) |
+| **7** | **[🗺️ 7. Roadmap to 100% Parity]([#-7-roadmap-to-100-parity])** | (#-7-roadmap-to-100-parity) |
 
 ---
 ## 🖼️ 1. Visual Architecture & Pipeline
