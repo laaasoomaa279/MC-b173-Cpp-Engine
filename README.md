@@ -27,7 +27,7 @@ A lightweight voxel engine written in C++20, with no external dependencies, buil
 | :---: | :--- |
 | **1** | **[🖼️ 1. Visual Architecture & Pipeline](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#%EF%B8%8F-1-visual-architecture--pipeline)** | (#-1-visual-architecture--pipeline) |
 | **2** | **[📈 2. Paper Math vs. Screen Reality](#-2-paper-math-vs-screen-reality)** | (#-2-paper-math-vs-screen-reality) |
-| **3** | **[🐛 3. Unfiltered Bug & Glitch Report](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#-2-paper-math-vs-screen-reality)** | (#-3-unfiltered-bug--glitch-report) |
+| **3** | **[🐛 3. Unfiltered Bug & Glitch Report](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#-3-unfiltered-bug--glitch-report)** | (#-3-unfiltered-bug--glitch-report) |
 | **4** | **[✨ 4. What Already Works Brilliantly](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#-4-what-already-works-brilliantly)** | (#-4-what-already-works-brilliantly) |
 | **5** | **[🗂️ 5. Complete Repository File Tree](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#%EF%B8%8F-5-complete-repository-file-tree)** | (#-5-complete-repository-file-tree) |
 | **6** | **[🛠️ 6. Building, Running & Controls](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#%EF%B8%8F-6-building-running--controls)** | (#-6-building-running--controls) |
