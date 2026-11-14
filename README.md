@@ -8,7 +8,7 @@
 [![Win32](https://img.shields.io/badge/PLATFORM-NATIVE_WIN32-0078D6?style=flat-square&logo=windows&logoColor=white&labelColor=0d1117)]()
 [![Zero](https://img.shields.io/badge/ENGINES-ZERO_FRAMEWORKS-2EA043?style=flat-square&labelColor=0d1117)]()
 ![Math](https://img.shields.io/badge/MATH_%26_LOGIC-89%25-2EA043?style=flat-square&labelColor=161b22)
-![Visual](https://img.shields.io/badge/VISUAL_%26-72%25-D29922?style=flat-square&labelColor=161b22)
+![Visual](https://img.shields.io/badge/VISUAL-72%25-D29922?style=flat-square&labelColor=161b22)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square&labelColor=161b22)]()
 
 
