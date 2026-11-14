@@ -45,3 +45,49 @@ A lightweight voxel engine written in C++20, with no external dependencies, buil
 ### Compile
 ```powershell
 .\build.ps1
+```
+## 🛠️ Project Architecture
+
+The engine is built with a **bare-metal, zero-dependency philosophy**. It is separated into highly decoupled subsystems for maximum performance, thread safety, and maintainability. Below is the complete directory structure and its technical breakdown:
+
+```text
+main_source/
+├── build.ps1                     # Cached module compilation script (Clang / MSVC)
+├── shaders/                      # GLSL Shader Pipeline
+│   ├── chunk.vert                # 64-bit vertex unpacking + Mojang directional shading
+│   ├── chunk.frag                # Terrain texture atlas + distance/underwater fog
+│   ├── entity_ui.vert            # Entity joint animations + 2D orthographic projection
+│   └── entity_ui.frag            # Bi-directional entity lighting + damage flash
+├── vendor/                       # Public Domain / MIT Single-File Libraries
+│   ├── miniz.c / miniz.h         # Zlib/Gzip for McRegion (.mcr) & level.dat
+│   ├── stb_image.h / stb.cpp     # Image decoding for textures & mob skins
+│   └── stb_vorbis.c              # Ogg Vorbis audio decoding
+└── src/                          # Core Engine Source Code
+    ├── main.cpp                  # Master loop: 20 TPS simulation + render sync + C-ABI mod loader
+    ├── platform.hpp              # Win32, OpenGL 3.3 Core, WM_INPUT, WorkerPool, WinMM 3D Audio
+    ├── blocks.hpp                # 96 Block registry, sub-voxel hitboxes, piston/stairs geometry
+    ├── assets/
+    │   ├── asset_loader.hpp      # Asset extraction from user .jar + procedural fallbacks
+    │   └── recipes_b173.hpp      # Crafting, smelting tables, and TMI catalog
+    ├── world/
+    │   ├── world.hpp             # 16x128x16 columns, 16-level light propagation, fluid dynamics
+    │   ├── world_gen_b173.hpp    # 3-Perlin noise, floating cliffs, Far Lands, caves, ores
+    │   └── mcregion_nbt.hpp      # McRegion save format (.mcr) & Big-Endian NBT parser
+    ├── render/
+    │   ├── mesher_cubes.hpp      # Greedy meshing with smooth ambient occlusion
+    │   ├── mesher_models.hpp     # Sub-voxel models (torches, crops, fluids, rails)
+    │   └── sky_weather.hpp       # Sky dome, 3D volumetric clouds, rain/snow, biome tinting
+    ├── gameplay/
+    │   ├── physics.hpp           # AABB collision, Beta physics (no sprint/hunger), block breaking
+    │   ├── redstone_pistons.hpp  # Redstone logic, repeaters, 12-block piston pushing
+    │   └── combat_nether.hpp     # Classic combat, bow firing, Nether portals (1:8 scaling)
+    ├── entities/
+    │   ├── entities_ai.hpp       # AI for 10 mob types + arrow projectiles + TNT
+    │   └── entity_renderer.hpp   # Batched 64x32 skin rendering + dropped item bobbing
+    ├── ui/
+    │   ├── ui_primitives.hpp     # ASCII font renderer, classic buttons, isometric 3D item icons
+    │   ├── ui_hud_containers.hpp # Hearts, armor, bubbles, inventory, furnace, chest, TMI
+    │   └── ui_menus.hpp          # Main menu, world browser, settings, death screen
+    └── net/
+        └── net_protocol_b173.hpp # Beta 1.7.3 Protocol v14 (Big-Endian TCP, Zlib chunks)
+``` 
