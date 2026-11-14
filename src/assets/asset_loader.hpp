@@ -17,7 +17,53 @@
 #include <algorithm>
 
 // ============================================================================
-// Minecraft Beta 1.7.3 Complete Asset Loader (1:1 Java Texture & Sound Fidelity)
+// CLASSIC VOXEL ENGINE ASSET PIPELINE & SPECIFICATION (SPEC-2011)
+// ============================================================================
+// Technical Subsystem Architecture:
+// 1. Texture Atlas & UV Coordinate Sub-allocation:
+//    - Terrain Atlas: 256x256 RGBA8 texture holding a 16x16 grid of 16x16 pixel
+//      block tiles (indexed 0..255).
+//    - Items Atlas: 256x256 RGBA8 texture holding a 16x16 grid of 16x16 pixel
+//      item sprites (indexed 0..255).
+//    - Dynamic Tile Synthesis: Procedural generation for animated tiles (Water
+//      at index 205, Lava at index 237, Fire at index 31, and Portal at index 14)
+//      to eliminate static placeholder artifacts present in base archives.
+// 2. Texture Wrapping & Sampler State Management:
+//    - Orthographic and tiled surface textures utilize GL_REPEAT for seamless
+//      geometric tiling across section meshes.
+//    - Projected decal surfaces (notably spherical entity ground shadows from
+//      misc/shadow.png) mandate GL_CLAMP_TO_EDGE with a zero-alpha clamped border.
+//      This guarantees that UV coordinate projections extending outside the [0, 1]
+//      parametric bounds do not replicate concentric shadow rings across adjoining blocks.
+// 3. Typographic Metrics & Variable-Width Raster Font Engine:
+//    - Font Sheet: 128x128 monochrome glyph matrix containing 16x16 character cells
+//      (8x8 pixels per glyph).
+//    - Proportional Kerning: Measured by scanning each 8x8 glyph matrix from the
+//      rightmost boundary (x = cellW - 1 down to 0) to locate the outermost pixel
+//      with opacity alpha > 32.
+//    - Glyph Metric Formula: Width = rightmost_column + 2, where the additional
+//      unit represents standard inter-character spacing. ASCII space (index 32)
+//      is clamped to an invariant kerning width of 4 units.
+// 4. Dual Triangular Climate Colormap Space:
+//    - Biome coloration maps (grasscolor.png and foliagecolor.png) represent a
+//      256x256 continuous thermodynamic space.
+//    - Bilinear Coordinate Transform: Given temperature T in [0, 1] and humidity
+//      R in [0, 1], the sampling indices are defined by:
+//          effective_rain = clamp(R, 0.0, 1.0) * clamp(T, 0.0, 1.0)
+//          Px = clamp(floor((1.0 - T) * 255.0), 0, 255)
+//          Py = clamp(floor((1.0 - effective_rain) * 255.0), 0, 255)
+//          Sample_Index = (Py * 256 + Px) * 4
+// 5. Canonical Item Registry & Kinetic Durability Systems:
+//    - Indices 256..359 delineate survival tools, armaments, and consumable items.
+//    - Harvest Speed Multipliers: Wood = 2.0x, Stone = 4.0x, Iron = 6.0x,
+//      Diamond = 8.0x, Gold = 12.0x.
+//    - Tool Durability Arrays: Wood = 59, Stone = 131, Iron = 250, Diamond = 1561,
+//      Gold = 32.
+//    - Armor Durabilities: Helmet/Chestplate/Leggings/Boots ratios scaled across
+//      Leather (34..49), Chain/Gold (67..97), Iron (134..193), Diamond (268..385).
+// 6. Direct OGG Vorbis Audio Stream Decoding:
+//    - Autonomous decompression of discrete OGG audio packets using stb_vorbis
+//      with automatic linear resampling to a normalized 44.1 kHz 16-bit PCM buffer.
 // ============================================================================
 
 enum Beta173ItemId : uint16_t {
@@ -171,10 +217,10 @@ public:
     std::string jarPath;
     std::string mcRootDir;
 
-    // Core OpenGL Textures
+    // Hardware OpenGL Texture Identifiers
     GLuint terrainTex     = 0; // terrain.png (256x256)
     GLuint itemsTex       = 0; // gui/items.png (256x256)
-    GLuint fontTex        = 0; // font/default.png
+    GLuint fontTex        = 0; // font/default.png (128x128)
     GLuint mcLogoTex      = 0; // title/mclogo.png
     GLuint guiTex         = 0; // gui/gui.png
     GLuint iconsTex       = 0; // gui/icons.png
@@ -187,7 +233,7 @@ public:
     GLuint cloudsTex      = 0; // environment/clouds.png
     GLuint rainTex        = 0; // environment/rain.png
     GLuint snowTex        = 0; // environment/snow.png
-    GLuint shadowTex      = 0; // misc/shadow.png
+    GLuint shadowTex      = 0; // misc/shadow.png (Strictly clamped to edge)
     GLuint mobSkins[SKIN_COUNT]{};
 
     uint8_t charWidths[256]{};
@@ -222,35 +268,36 @@ public:
         bool hasJar = (!jarPath.empty() && mz_zip_reader_init_file(&zip, jarPath.c_str(), 0));
         mz_zip_archive* zPtr = hasJar ? &zip : nullptr;
 
-        terrainTex   = loadTextureFromSources(zPtr, "terrain.png");
-        itemsTex     = loadTextureFromSources(zPtr, "gui/items.png");
+        terrainTex   = loadTextureFromSources(zPtr, "terrain.png", false, true, GL_REPEAT);
+        itemsTex     = loadTextureFromSources(zPtr, "gui/items.png", false, true, GL_REPEAT);
         fontTex      = loadFontAndMeasureWidths(zPtr, "font/default.png");
-        mcLogoTex    = loadTextureFromSources(zPtr, "title/mclogo.png", false, false);
-        guiTex       = loadTextureFromSources(zPtr, "gui/gui.png");
-        iconsTex     = loadTextureFromSources(zPtr, "gui/icons.png");
-        inventoryTex = loadTextureFromSources(zPtr, "gui/inventory.png");
-        craftingTex  = loadTextureFromSources(zPtr, "gui/crafting.png");
-        furnaceTex   = loadTextureFromSources(zPtr, "gui/furnace.png");
-        containerTex = loadTextureFromSources(zPtr, "gui/container.png");
-        sunTex       = loadTextureFromSources(zPtr, "terrain/sun.png");
-        moonTex      = loadTextureFromSources(zPtr, "terrain/moon.png");
-        cloudsTex    = loadTextureFromSources(zPtr, "environment/clouds.png");
-        rainTex      = loadTextureFromSources(zPtr, "environment/rain.png");
-        snowTex      = loadTextureFromSources(zPtr, "environment/snow.png");
-        shadowTex    = loadTextureFromSources(zPtr, "misc/shadow.png", true);
+        mcLogoTex    = loadTextureFromSources(zPtr, "title/mclogo.png", false, false, GL_CLAMP_TO_EDGE);
+        guiTex       = loadTextureFromSources(zPtr, "gui/gui.png", false, true, GL_REPEAT);
+        iconsTex     = loadTextureFromSources(zPtr, "gui/icons.png", false, true, GL_REPEAT);
+        inventoryTex = loadTextureFromSources(zPtr, "gui/inventory.png", false, true, GL_REPEAT);
+        craftingTex  = loadTextureFromSources(zPtr, "gui/crafting.png", false, true, GL_REPEAT);
+        furnaceTex   = loadTextureFromSources(zPtr, "gui/furnace.png", false, true, GL_REPEAT);
+        containerTex = loadTextureFromSources(zPtr, "gui/container.png", false, true, GL_REPEAT);
+        sunTex       = loadTextureFromSources(zPtr, "terrain/sun.png", true, true, GL_CLAMP_TO_EDGE);
+        moonTex      = loadTextureFromSources(zPtr, "terrain/moon.png", true, true, GL_CLAMP_TO_EDGE);
+        cloudsTex    = loadTextureFromSources(zPtr, "environment/clouds.png", false, true, GL_REPEAT);
+        rainTex      = loadTextureFromSources(zPtr, "environment/rain.png", false, true, GL_REPEAT);
+        snowTex      = loadTextureFromSources(zPtr, "environment/snow.png", false, true, GL_REPEAT);
 
-        mobSkins[SKIN_PLAYER]    = loadTextureFromSources(zPtr, "mob/char.png");
-        mobSkins[SKIN_ZOMBIE]    = loadTextureFromSources(zPtr, "mob/zombie.png");
-        mobSkins[SKIN_CREEPER]   = loadTextureFromSources(zPtr, "mob/creeper.png");
-        mobSkins[SKIN_SKELETON]  = loadTextureFromSources(zPtr, "mob/skeleton.png");
-        mobSkins[SKIN_SPIDER]    = loadTextureFromSources(zPtr, "mob/spider.png");
-        mobSkins[SKIN_PIG]       = loadTextureFromSources(zPtr, "mob/pig.png");
-        mobSkins[SKIN_SHEEP]     = loadTextureFromSources(zPtr, "mob/sheep.png");
-        mobSkins[SKIN_SHEEP_FUR] = loadTextureFromSources(zPtr, "mob/sheep_fur.png");
-        mobSkins[SKIN_COW]       = loadTextureFromSources(zPtr, "mob/cow.png");
-        mobSkins[SKIN_GHAST]     = loadTextureFromSources(zPtr, "mob/ghast.png");
+        // Ground shadow texture MUST enforce GL_CLAMP_TO_EDGE to prevent peripheral ring replication
+        shadowTex    = loadTextureFromSources(zPtr, "misc/shadow.png", true, true, GL_CLAMP_TO_EDGE);
 
-        // Replace empty Mojang "FIRE TEX! HINT" / water / lava placeholder tiles with real textures
+        mobSkins[SKIN_PLAYER]    = loadTextureFromSources(zPtr, "mob/char.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_ZOMBIE]    = loadTextureFromSources(zPtr, "mob/zombie.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_CREEPER]   = loadTextureFromSources(zPtr, "mob/creeper.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_SKELETON]  = loadTextureFromSources(zPtr, "mob/skeleton.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_SPIDER]    = loadTextureFromSources(zPtr, "mob/spider.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_PIG]       = loadTextureFromSources(zPtr, "mob/pig.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_SHEEP]     = loadTextureFromSources(zPtr, "mob/sheep.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_SHEEP_FUR] = loadTextureFromSources(zPtr, "mob/sheep_fur.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_COW]       = loadTextureFromSources(zPtr, "mob/cow.png", false, true, GL_CLAMP_TO_EDGE);
+        mobSkins[SKIN_GHAST]     = loadTextureFromSources(zPtr, "mob/ghast.png", false, true, GL_CLAMP_TO_EDGE);
+
         generateProceduralAnimatedTiles();
 
         loadColormap(zPtr, "misc/grasscolor.png", grassColormap);
@@ -281,19 +328,21 @@ public:
     void sampleBiomeColor(float temp, float rain, bool foliage, float& outR, float& outG, float& outB) const {
         const auto& map = foliage ? foliageColormap : grassColormap;
         if (map.size() < 256 * 256 * 4) {
-            outR = foliage ? 0.35f : 0.55f;
-            outG = foliage ? 0.72f : 0.85f;
-            outB = foliage ? 0.22f : 0.34f;
+            if (foliage) {
+                outR = 0.28f; outG = 0.63f; outB = 0.18f; // Hex 0x48B518 Oak Foliage
+            } else {
+                outR = 0.47f; outG = 0.74f; outB = 0.35f; // Hex 0x79C05A Plains Grass
+            }
             return;
         }
         float t = std::clamp(temp, 0.0f, 1.0f);
         float r = std::clamp(rain, 0.0f, 1.0f) * t;
-        int px = std::clamp((int)((1.0f - t) * 255.0f), 0, 255);
-        int py = std::clamp((int)((1.0f - r) * 255.0f), 0, 255);
+        int px = std::clamp(static_cast<int>((1.0f - t) * 255.0f), 0, 255);
+        int py = std::clamp(static_cast<int>((1.0f - r) * 255.0f), 0, 255);
         size_t idx = ((size_t)py * 256 + (size_t)px) * 4;
-        outR = map[idx + 0] / 255.0f;
-        outG = map[idx + 1] / 255.0f;
-        outB = map[idx + 2] / 255.0f;
+        outR = static_cast<float>(map[idx + 0]) / 255.0f;
+        outG = static_cast<float>(map[idx + 1]) / 255.0f;
+        outB = static_cast<float>(map[idx + 2]) / 255.0f;
     }
 
 private:
@@ -304,42 +353,54 @@ private:
         uint8_t firePx[16 * 16 * 4]{};
         uint8_t waterPx[16 * 16 * 4]{};
         uint8_t lavaPx[16 * 16 * 4]{};
+        uint8_t portalPx[16 * 16 * 4]{};
 
         for (int y = 0; y < 16; ++y) {
             for (int x = 0; x < 16; ++x) {
                 int idx = (y * 16 + x) * 4;
 
-                // Classic Beta 1.7.3 Water (16x16 blue)
-                uint8_t wShade = (uint8_t)(215 + ((x * 7 + y * 13) & 31));
-                waterPx[idx + 0] = 35;
-                waterPx[idx + 1] = 80;
+                // 1. Water Still (Index 205): Deep azure fluid with harmonic wave interference
+                float wave = std::sin(static_cast<float>(x) * 0.45f) * std::cos(static_cast<float>(y) * 0.45f);
+                uint8_t wShade = static_cast<uint8_t>(std::clamp(205 + static_cast<int>(wave * 35.0f) + ((x * 7 + y * 13) & 15), 180, 255));
+                waterPx[idx + 0] = 30;
+                waterPx[idx + 1] = 75;
                 waterPx[idx + 2] = wShade;
                 waterPx[idx + 3] = 215;
 
-                // Classic Beta 1.7.3 Lava (16x16 molten orange)
-                uint8_t lShade = (uint8_t)(165 + ((x * 11 + y * 5) & 63));
-                lavaPx[idx + 0] = 248;
+                // 2. Lava Still (Index 237): High-temperature molten basalt pattern
+                float turbulence = std::sin(static_cast<float>(x) * 0.6f + static_cast<float>(y) * 0.3f);
+                uint8_t lShade = static_cast<uint8_t>(std::clamp(150 + static_cast<int>(turbulence * 45.0f) + ((x * 11 + y * 5) & 31), 120, 220));
+                lavaPx[idx + 0] = 250;
                 lavaPx[idx + 1] = lShade;
-                lavaPx[idx + 2] = 20;
+                lavaPx[idx + 2] = 18;
                 lavaPx[idx + 3] = 255;
 
-                // Classic Beta 1.7.3 Fire (eliminates red "FIRE TEX! HINT" square)
-                float fx = std::abs((x - 7.5f) / 7.5f);
-                float fy = (float)y / 15.0f; // 0 = top, 1 = bottom
-                float flame = fy - fx * 0.65f + (((x * 3 + y * 5) & 3) * 0.08f);
-                if (flame > 0.35f) {
+                // 3. Fire (Index 31): Convective thermal flame gradient eliminating placeholder artifacts
+                float fx = std::abs((static_cast<float>(x) - 7.5f) / 7.5f);
+                float fy = static_cast<float>(y) / 15.0f; // 0 = top, 1 = bottom
+                float flame = fy - fx * 0.60f + (((x * 5 + y * 11) & 7) * 0.045f);
+                if (flame > 0.28f) {
                     firePx[idx + 0] = 255;
-                    firePx[idx + 1] = (uint8_t)std::clamp((int)(flame * 235.0f), 85, 245);
-                    firePx[idx + 2] = (flame > 0.85f) ? 140 : 20;
+                    firePx[idx + 1] = static_cast<uint8_t>(std::clamp(static_cast<int>(flame * 240.0f), 70, 250));
+                    firePx[idx + 2] = (flame > 0.82f) ? 130 : 15;
                     firePx[idx + 3] = 255;
+                } else {
+                    firePx[idx + 3] = 0;
                 }
+
+                // 4. Portal (Index 14): Inter-dimensional cosmic purple field
+                float pW = std::sin(static_cast<float>(x) * 0.5f) * std::sin(static_cast<float>(y) * 0.5f);
+                portalPx[idx + 0] = static_cast<uint8_t>(std::clamp(85 + static_cast<int>(pW * 40.0f), 45, 140));
+                portalPx[idx + 1] = static_cast<uint8_t>(std::clamp(20 + static_cast<int>(pW * 20.0f), 10, 50));
+                portalPx[idx + 2] = static_cast<uint8_t>(std::clamp(160 + static_cast<int>(pW * 55.0f), 110, 230));
+                portalPx[idx + 3] = 210;
             }
         }
 
-        // Slot 31 = Fire, Slot 205 = Water, Slot 237 = Lava
         glTexSubImage2D(GL_TEXTURE_2D, 0, (31 % 16) * 16,  (31 / 16) * 16,  16, 16, GL_RGBA, GL_UNSIGNED_BYTE, firePx);
         glTexSubImage2D(GL_TEXTURE_2D, 0, (205 % 16) * 16, (205 / 16) * 16, 16, 16, GL_RGBA, GL_UNSIGNED_BYTE, waterPx);
         glTexSubImage2D(GL_TEXTURE_2D, 0, (237 % 16) * 16, (237 / 16) * 16, 16, 16, GL_RGBA, GL_UNSIGNED_BYTE, lavaPx);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, (14 % 16) * 16,  (14 / 16) * 16,  16, 16, GL_RGBA, GL_UNSIGNED_BYTE, portalPx);
     }
 
     void discoverMinecraftPaths() {
@@ -365,17 +426,39 @@ private:
         }
     }
 
-    static bool readRawBytesFromJarOrDisk(mz_zip_archive* zip, const std::string& relPath, std::vector<uint8_t>& out) {
-        const std::string prefixes[] = { "assets/", "../assets/" };
-        for (const auto& pre : prefixes) {
+    static bool readRawBytesFromJarOrDisk(mz_zip_archive* zip, const std::string& relPath,
+                                          std::vector<uint8_t>& out, const std::string& mcRoot = "") {
+        const std::string localPrefixes[] = { "", "assets/", "../assets/" };
+        for (const auto& pre : localPrefixes) {
             std::ifstream f(pre + relPath, std::ios::binary);
             if (f.is_open()) {
                 f.seekg(0, std::ios::end);
-                size_t sz = (size_t)f.tellg();
+                size_t sz = static_cast<size_t>(f.tellg());
                 f.seekg(0, std::ios::beg);
                 out.resize(sz);
-                f.read((char*)out.data(), sz);
-                return !out.empty();
+                f.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(sz));
+                if (!out.empty()) return true;
+            }
+        }
+
+        // Direct ingestion from native local client resources directory
+        if (!mcRoot.empty()) {
+            const std::string mcPrefixes[] = {
+                mcRoot + "\\resources\\",
+                mcRoot + "\\resources\\newsound\\",
+                mcRoot + "\\resources\\sound3\\",
+                mcRoot + "\\"
+            };
+            for (const auto& pre : mcPrefixes) {
+                std::ifstream f(pre + relPath, std::ios::binary);
+                if (f.is_open()) {
+                    f.seekg(0, std::ios::end);
+                    size_t sz = static_cast<size_t>(f.tellg());
+                    f.seekg(0, std::ios::beg);
+                    out.resize(sz);
+                    f.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(sz));
+                    if (!out.empty()) return true;
+                }
             }
         }
 
@@ -383,7 +466,7 @@ private:
             size_t sz = 0;
             void* ptr = mz_zip_reader_extract_file_to_heap(zip, relPath.c_str(), &sz, 0);
             if (ptr && sz > 0) {
-                out.assign((uint8_t*)ptr, (uint8_t*)ptr + sz);
+                out.assign(static_cast<uint8_t*>(ptr), static_cast<uint8_t*>(ptr) + sz);
                 mz_free(ptr);
                 return true;
             }
@@ -392,7 +475,7 @@ private:
         return false;
     }
 
-    static GLuint uploadRGBA(const uint8_t* pixels, int w, int h, bool linearFilter = false) {
+    static GLuint uploadRGBA(const uint8_t* pixels, int w, int h, bool linearFilter = false, GLenum wrapMode = GL_REPEAT) {
         GLuint tex = 0;
         glGenTextures(1, &tex);
         glBindTexture(GL_TEXTURE_2D, tex);
@@ -400,24 +483,46 @@ private:
         GLint filter = linearFilter ? GL_LINEAR : GL_NEAREST;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapMode);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapMode);
         return tex;
     }
 
-    static GLuint loadTextureFromSources(mz_zip_archive* zip, const std::string& relPath,
-                                         bool linearFilter = false, bool useFallbackChecker = true) {
+    GLuint loadTextureFromSources(mz_zip_archive* zip, const std::string& relPath,
+                                  bool linearFilter = false, bool useFallbackChecker = true,
+                                  GLenum wrapMode = GL_REPEAT) {
         std::vector<uint8_t> raw;
-        if (readRawBytesFromJarOrDisk(zip, relPath, raw)) {
+        if (readRawBytesFromJarOrDisk(zip, relPath, raw, mcRootDir)) {
             int w = 0, h = 0, ch = 0;
-            uint8_t* px = stbi_load_from_memory(raw.data(), (int)raw.size(), &w, &h, &ch, 4);
+            uint8_t* px = stbi_load_from_memory(raw.data(), static_cast<int>(raw.size()), &w, &h, &ch, 4);
             if (px) {
-                GLuint id = uploadRGBA(px, w, h, linearFilter);
+                GLuint id = uploadRGBA(px, w, h, linearFilter, wrapMode);
                 stbi_image_free(px);
                 return id;
             }
         }
         if (!useFallbackChecker) return 0;
+
+        // Dedicated procedural radial falloff for projected entity shadows
+        if (relPath == "misc/shadow.png") {
+            std::vector<uint8_t> shadowFallback(64 * 64 * 4, 0);
+            for (int y = 0; y < 64; ++y) {
+                for (int x = 0; x < 64; ++x) {
+                    float dx = (static_cast<float>(x) - 31.5f) / 31.5f;
+                    float dy = (static_cast<float>(y) - 31.5f) / 31.5f;
+                    float d2 = dx * dx + dy * dy;
+                    if (d2 < 1.0f) {
+                        float a = 1.0f - std::sqrt(d2);
+                        size_t idx = ((size_t)y * 64 + (size_t)x) * 4;
+                        shadowFallback[idx + 0] = 0;
+                        shadowFallback[idx + 1] = 0;
+                        shadowFallback[idx + 2] = 0;
+                        shadowFallback[idx + 3] = static_cast<uint8_t>(a * 255.0f);
+                    }
+                }
+            }
+            return uploadRGBA(shadowFallback.data(), 64, 64, linearFilter, GL_CLAMP_TO_EDGE);
+        }
 
         std::vector<uint8_t> fallback(256 * 256 * 4, 255);
         for (int y = 0; y < 256; ++y) {
@@ -430,44 +535,58 @@ private:
                 fallback[idx + 3] = 255;
             }
         }
-        return uploadRGBA(fallback.data(), 256, 256, linearFilter);
+        return uploadRGBA(fallback.data(), 256, 256, linearFilter, wrapMode);
     }
 
     GLuint loadFontAndMeasureWidths(mz_zip_archive* zip, const std::string& relPath) {
         std::vector<uint8_t> raw;
-        if (readRawBytesFromJarOrDisk(zip, relPath, raw)) {
+        if (readRawBytesFromJarOrDisk(zip, relPath, raw, mcRootDir)) {
             int w = 0, h = 0, ch = 0;
-            uint8_t* px = stbi_load_from_memory(raw.data(), (int)raw.size(), &w, &h, &ch, 4);
+            uint8_t* px = stbi_load_from_memory(raw.data(), static_cast<int>(raw.size()), &w, &h, &ch, 4);
             if (px) {
                 int cellW = w / 16;
                 int cellH = h / 16;
                 for (int c = 0; c < 256; ++c) {
-                    if (c == ' ') { charWidths[c] = 4; continue; }
+                    if (c == 32) { // ASCII Space kerning width
+                        charWidths[c] = 4;
+                        continue;
+                    }
                     int gx = (c % 16) * cellW;
                     int gy = (c / 16) * cellH;
-                    int maxCol = 0;
-                    for (int x = 0; x < cellW; ++x) {
+                    int rightmost = -1;
+
+                    // Scan character matrix columns right-to-left for active pixels
+                    for (int x = cellW - 1; x >= 0; --x) {
                         for (int y = 0; y < cellH; ++y) {
                             uint8_t a = px[((gy + y) * w + (gx + x)) * 4 + 3];
-                            if (a > 10) maxCol = std::max(maxCol, x + 1);
+                            if (a > 32) {
+                                rightmost = x;
+                                break;
+                            }
                         }
+                        if (rightmost >= 0) break;
                     }
-                    float scaleTo8 = 8.0f / std::max(1, cellW);
-                    charWidths[c] = (uint8_t)std::clamp((int)std::round(maxCol * scaleTo8) + 1, 2, 9);
+
+                    if (rightmost >= 0) {
+                        float scaled = static_cast<float>(rightmost + 1) * 8.0f / static_cast<float>(cellW);
+                        charWidths[c] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(scaled)) + 1, 1, 9));
+                    } else {
+                        charWidths[c] = 0;
+                    }
                 }
-                GLuint id = uploadRGBA(px, w, h, false);
+                GLuint id = uploadRGBA(px, w, h, false, GL_CLAMP_TO_EDGE);
                 stbi_image_free(px);
                 return id;
             }
         }
-        return loadTextureFromSources(nullptr, relPath, false);
+        return loadTextureFromSources(nullptr, relPath, false, true, GL_CLAMP_TO_EDGE);
     }
 
-    static void loadColormap(mz_zip_archive* zip, const std::string& relPath, std::vector<uint8_t>& outRGBA) {
+    void loadColormap(mz_zip_archive* zip, const std::string& relPath, std::vector<uint8_t>& outRGBA) {
         std::vector<uint8_t> raw;
-        if (readRawBytesFromJarOrDisk(zip, relPath, raw)) {
+        if (readRawBytesFromJarOrDisk(zip, relPath, raw, mcRootDir)) {
             int w = 0, h = 0, ch = 0;
-            uint8_t* px = stbi_load_from_memory(raw.data(), (int)raw.size(), &w, &h, &ch, 4);
+            uint8_t* px = stbi_load_from_memory(raw.data(), static_cast<int>(raw.size()), &w, &h, &ch, 4);
             if (px && w == 256 && h == 256) {
                 outRGBA.assign(px, px + 256 * 256 * 4);
                 stbi_image_free(px);
@@ -479,8 +598,8 @@ private:
 
     void loadSplashes(mz_zip_archive* zip) {
         std::vector<uint8_t> raw;
-        if (readRawBytesFromJarOrDisk(zip, "title/splashes.txt", raw)) {
-            std::string txt((const char*)raw.data(), raw.size());
+        if (readRawBytesFromJarOrDisk(zip, "title/splashes.txt", raw, mcRootDir)) {
+            std::string txt(reinterpret_cast<const char*>(raw.data()), raw.size());
             std::istringstream ss(txt);
             std::string line;
             while (std::getline(ss, line)) {
@@ -502,7 +621,7 @@ private:
     static bool decodeOggToSoundBuffer(const uint8_t* data, size_t len, AudioEngine& audio, SoundBuffer& out) {
         int channels = 0, sampleRate = 0;
         short* decoded = nullptr;
-        int samples = stb_vorbis_decode_memory(data, (int)len, &channels, &sampleRate, &decoded);
+        int samples = stb_vorbis_decode_memory(data, static_cast<int>(len), &channels, &sampleRate, &decoded);
         if (samples > 0 && decoded) {
             out = audio.resampleTo44100Mono(decoded, samples, channels, sampleRate);
             std::free(decoded);
@@ -514,10 +633,11 @@ private:
     void loadClassicSounds(mz_zip_archive* zip, AudioEngine& audio) {
         auto tryLoad = [&](const char* jarRel, SoundBuffer& dst) {
             std::vector<uint8_t> raw;
-            if (readRawBytesFromJarOrDisk(zip, jarRel, raw)) {
+            if (readRawBytesFromJarOrDisk(zip, jarRel, raw, mcRootDir)) {
                 decodeOggToSoundBuffer(raw.data(), raw.size(), audio, dst);
             }
         };
+
         tryLoad("sound/step/stone1.ogg",   digSounds[SND_STONE]);
         tryLoad("sound/step/grass1.ogg",   digSounds[SND_GRASS]);
         tryLoad("sound/step/gravel1.ogg",  digSounds[SND_GRAVEL]);

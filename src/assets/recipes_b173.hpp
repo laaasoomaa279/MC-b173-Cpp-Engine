@@ -6,7 +6,7 @@
 #include <algorithm>
 
 // ============================================================================
-// Minecraft Beta 1.7.3 Complete Crafting, Smelting & TooManyItems (TMI) List
+// Crafting, Smelting & TooManyItems (TMI) List
 // ============================================================================
 
 struct ItemStack {

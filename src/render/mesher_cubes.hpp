@@ -11,10 +11,10 @@
 #include <vector>
 
 // ============================================================================
-// Minecraft Beta 1.7.3 Cube Mesher (RenderBlocks.java 1:1 Fidelity)
+//                                  Cube Mesher
 // ============================================================================
-// - Exact 1/16th block fixed-point coordinates [0..256]
-// - Mojang RenderBlocks.renderStandardBlockWithAmbientOcclusion corner light
+// - 1/16th block fixed-point coordinates [0..256]
+// - RenderBlocks.renderStandardBlockWithAmbientOcclusion corner light
 // - Authentic Beta 1.7.3 Fancy Grass Side Overlay (SPR_GRASS_SIDE_OVERLAY = 38)
 // - Diagonal quad flipping based on AO to prevent interpolation seams
 // ============================================================================
@@ -63,7 +63,7 @@ public:
         uint8_t  sky[4]      = {15, 15, 15, 15};
         uint8_t  blk[4]      = {0, 0, 0, 0};
         bool     translucent = false;
-        bool     grassSide   = false; // Triggers Mojang Fancy Grass Side Overlay (sprite 38)
+        bool     grassSide   = false; // TriggersFancy Grass Side Overlay (sprite 38)
 
         bool operator==(const FaceCell& o) const {
             return state == o.state && sprite == o.sprite && tint == o.tint &&
@@ -156,7 +156,7 @@ public:
                         emitCubeFaceQuad(face, slice, u, v, w, h, first,
                                          first.translucent ? outTranslucent : outOpaque);
 
-                        // Mojang Fancy Grass Side Overlay (renders sprite 38 tinted with grasscolor.png)
+                        //Fancy Grass Side Overlay (renders sprite 38 tinted with grasscolor.png)
                         if (first.grassSide) {
                             FaceCell overlay = first;
                             overlay.sprite = SPR_GRASS_SIDE_OVERLAY;

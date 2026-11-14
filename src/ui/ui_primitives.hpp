@@ -14,7 +14,14 @@
 #include <algorithm>
 
 // ============================================================================
-// Minecraft Beta 1.7.3 2D UI Primitives (Gui.java & FontRenderer.java 1:1)
+// 2D UI Primitives & 3D Inventory Model (1:1 Mojang)
+// ============================================================================
+// - Auto GUI Scale (1x..4x)
+// - variable-width glyph rendering + 16 color codes (§0..§f)
+// - 3-state classic stone buttons (Disabled / Normal / Hovered)
+// - 3-face isometric 3D block icons & durability bars
+// - true 3D ModelBiped Steve preview with mouse pitch/yaw
+//   tracking, two-pointdirectional lighting, and idle breathing sway
 // ============================================================================
 
 struct UiVertex {
@@ -23,11 +30,22 @@ struct UiVertex {
     float r, g, b, a;
 };
 
+struct UiModelVertex {
+    float x, y, z;
+    float nx, ny, nz;
+    float u, v;
+    float r, g, b, a;
+};
+
 class BetaUiRenderer {
 public:
-    GLuint shader = 0;
-    GLuint vao    = 0;
-    GLuint vbo    = 0;
+    GLuint shader      = 0;
+    GLuint vao         = 0;
+    GLuint vbo         = 0;
+
+    GLuint modelShader = 0;
+    GLuint modelVao    = 0;
+    GLuint modelVbo    = 0;
 
     int    screenW  = 1280;
     int    screenH  = 720;
@@ -75,6 +93,52 @@ public:
 
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
+
+        // 3D Paper-Doll Model Shader (Mojang two-point entity lighting)
+        const char* mvSrc = R"(
+            #version 330 core
+            layout(location = 0) in vec3 a_pos;
+            layout(location = 1) in vec3 a_norm;
+            layout(location = 2) in vec2 a_uv;
+            layout(location = 3) in vec4 a_col;
+            uniform mat4 u_mvp;
+            out vec2 v_uv;
+            out vec4 v_col;
+            void main() {
+                v_uv = a_uv;
+                vec3 n = normalize(a_norm);
+                vec3 l1 = normalize(vec3(0.2, 1.0, 0.7));
+                vec3 l2 = normalize(vec3(-0.2, 1.0, -0.7));
+                float shade = clamp(0.45 + 0.35 * max(dot(n, l1), 0.0) + 0.35 * max(dot(n, l2), 0.0), 0.40, 1.0);
+                v_col = vec4(a_col.rgb * shade, a_col.a);
+                gl_Position = u_mvp * vec4(a_pos, 1.0);
+            }
+        )";
+        const char* mfSrc = R"(
+            #version 330 core
+            in vec2 v_uv;
+            in vec4 v_col;
+            uniform sampler2D u_tex;
+            out vec4 FragColor;
+            void main() {
+                vec4 c = texture(u_tex, v_uv) * v_col;
+                if (c.a < 0.05) discard;
+                FragColor = c;
+            }
+        )";
+
+        GLuint mvs = compileShaderStage(GL_VERTEX_SHADER, mvSrc, "ui_model.vert");
+        GLuint mfs = compileShaderStage(GL_FRAGMENT_SHADER, mfSrc, "ui_model.frag");
+        if (mvs && mfs) {
+            modelShader = glCreateProgram();
+            glAttachShader(modelShader, mvs);
+            glAttachShader(modelShader, mfs);
+            glLinkProgram(modelShader);
+            glDeleteShader(mvs);
+            glDeleteShader(mfs);
+        }
+        glGenVertexArrays(1, &modelVao);
+        glGenBuffers(1, &modelVbo);
     }
 
     void beginFrame(int winW, int winH, int scaleSetting = 0) {
@@ -84,7 +148,7 @@ public:
         if (scaleSetting > 0) {
             guiScale = std::clamp(scaleSetting, 1, 4);
         } else {
-            // Exact Mojang ScaledResolution.java Auto GUI Scale
+            // ExactScaledResolution.java Auto GUI Scale
             guiScale = 1;
             while (guiScale < 4 && (screenW / (guiScale + 1)) >= 320 && (screenH / (guiScale + 1)) >= 240) {
                 guiScale++;
@@ -99,7 +163,7 @@ public:
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         glUseProgram(shader);
-        Mat4 ortho = Mat4::ortho(0.0f, (float)scaledW, (float)scaledH, 0.0f, -1.0f, 1.0f);
+        Mat4 ortho = Mat4::ortho(0.0f, static_cast<float>(scaledW), static_cast<float>(scaledH), 0.0f, -1.0f, 1.0f);
         glUniformMatrix4fv(glGetUniformLocation(shader, "u_ortho"), 1, GL_FALSE, ortho.m);
     }
 
@@ -109,7 +173,7 @@ public:
         glEnable(GL_CULL_FACE);
     }
 
-    // Mojang Gui.drawRect(int left, int top, int right, int bottom, int color)
+    //Gui.drawRect(int left, int top, int right, int bottom, int color)
     void drawSolidRect(float x0, float y0, float x1, float y1, uint32_t argb) {
         if (x0 > x1) std::swap(x0, x1);
         if (y0 > y1) std::swap(y0, y1);
@@ -127,7 +191,7 @@ public:
         submitVertices(verts, 6);
     }
 
-    // Mojang Gui.drawGradientRect(int left, int top, int right, int bottom, int startColor, int endColor)
+    //Gui.drawGradientRect(int left, int top, int right, int bottom, int startColor, int endColor)
     void drawGradientRect(float x0, float y0, float x1, float y1, uint32_t topArgb, uint32_t botArgb) {
         float a0 = ((topArgb >> 24) & 0xFF) / 255.0f, r0 = ((topArgb >> 16) & 0xFF) / 255.0f;
         float g0 = ((topArgb >> 8)  & 0xFF) / 255.0f, b0 = (topArgb & 0xFF) / 255.0f;
@@ -143,7 +207,7 @@ public:
         submitVertices(verts, 6);
     }
 
-    // Mojang Gui.drawTexturedModalRect
+    //Gui.drawTexturedModalRect
     void drawTexturedRect(GLuint tex, float x, float y, float w, float h,
                           float u0Px, float v0Px, float u1Px, float v1Px,
                           float texW = 256.0f, float texH = 256.0f,
@@ -165,15 +229,15 @@ public:
     int getStringWidth(const BetaAssetManager& assets, const std::string& text) const {
         int w = 0;
         for (size_t i = 0; i < text.size(); ++i) {
-            uint8_t c = (uint8_t)text[i];
-            if (c == 0xC2 && i + 1 < text.size() && (uint8_t)text[i + 1] == 0xA7) { i += 2; continue; }
+            uint8_t c = static_cast<uint8_t>(text[i]);
+            if (c == 0xC2 && i + 1 < text.size() && static_cast<uint8_t>(text[i + 1]) == 0xA7) { i += 2; continue; }
             if (c == 0xA7 && i + 1 < text.size()) { i += 1; continue; }
             w += assets.charWidths[c];
         }
         return w;
     }
 
-    // Mojang FontRenderer.drawStringWithShadow
+    //FontRenderer.drawStringWithShadow
     void drawString(const BetaAssetManager& assets, const std::string& text, float x, float y,
                     uint32_t color = 0xFFFFFFFF, bool shadow = true) {
         if (text.empty() || !assets.fontTex) return;
@@ -185,11 +249,11 @@ public:
 
     void drawCenteredString(const BetaAssetManager& assets, const std::string& text, float cx, float y,
                             uint32_t color = 0xFFFFFFFF, bool shadow = true) {
-        float w = (float)getStringWidth(assets, text);
+        float w = static_cast<float>(getStringWidth(assets, text));
         drawString(assets, text, std::floor(cx - w * 0.5f), y, color, shadow);
     }
 
-    // Mojang GuiButton.drawButton (0 = Disabled, 1 = Normal, 2 = Hovered)
+    //GuiButton.drawButton (0 = Disabled, 1 = Normal, 2 = Hovered)
     bool drawClassicButton(const BetaAssetManager& assets, const std::string& label,
                            float x, float y, float w, float h,
                            int mouseX, int mouseY, bool clicked, bool enabled = true) {
@@ -202,7 +266,9 @@ public:
             drawTexturedRect(assets.guiTex, x,         y, halfW, h, 0.0f,           vTop, halfW,  vTop + 20.0f);
             drawTexturedRect(assets.guiTex, x + halfW, y, halfW, h, 200.0f - halfW, vTop, 200.0f, vTop + 20.0f);
         } else {
-            drawSolidRect(x, y, x + w, y + h, hovered ? 0xFF5A6FA8 : 0xFF4A4A4A);
+            drawSolidRect(x, y, x + w, y + h, 0xFF000000);
+            uint32_t fill = !enabled ? 0xFF282828 : (hovered ? 0xFF7E88BF : 0xFF707070);
+            drawSolidRect(x + 1.0f, y + 1.0f, x + w - 1.0f, y + h - 1.0f, fill);
         }
 
         uint32_t txtCol = !enabled ? 0xFFA0A0A0 : (hovered ? 0xFFFFFFA0 : 0xFFE0E0E0);
@@ -210,13 +276,13 @@ public:
         return hovered && clicked;
     }
 
-    // Mojang RenderItem.renderItemIntoGUI + renderItemOverlayIntoGUI
+    //RenderItem.renderItemIntoGUI + renderItemOverlayIntoGUI
     void drawItemStack(const WorldMap& world, const BetaAssetManager& assets,
                        const ItemStack& st, float x, float y) {
         if (st.isEmpty()) return;
 
         if (st.id < 256) {
-            uint16_t rawSt = (uint16_t)((st.id << 4) | (st.damage & 0x0F));
+            uint16_t rawSt = static_cast<uint16_t>((st.id << 4) | (st.damage & 0x0F));
             const BlockDef& def = world.registry.get(rawSt);
 
             if (def.shape == SHAPE_CUBE || def.shape == SHAPE_SLAB || def.shape == SHAPE_STAIR || def.shape == SHAPE_PISTON) {
@@ -236,33 +302,33 @@ public:
             drawTexturedRect(assets.itemsTex, x, y, 16.0f, 16.0f, u, v, u + 16.0f, v + 16.0f);
         }
 
-        // Mojang Exact Tool/Armor Durability Bar
+        //Exact Tool/Armor Durability Bar
         if (st.id >= 256 && st.damage > 0) {
             uint16_t maxD = assets.getItemDef(st.id).maxDamage;
             if (maxD > 0) {
-                int j = (int)std::round(13.0 - (double)st.damage * 13.0 / (double)maxD);
-                int k = (int)std::round(255.0 - (double)st.damage * 255.0 / (double)maxD);
+                int j = static_cast<int>(std::round(13.0 - static_cast<double>(st.damage) * 13.0 / static_cast<double>(maxD)));
+                int k = static_cast<int>(std::round(255.0 - static_cast<double>(st.damage) * 255.0 / static_cast<double>(maxD)));
                 drawSolidRect(x + 2.0f, y + 13.0f, x + 15.0f, y + 15.0f, 0xFF000000);
-                uint32_t bgCol = 0xFF000000u | ((uint32_t)((255 - k) / 4) << 16) | (0x3F00u);
+                uint32_t bgCol = 0xFF000000u | (static_cast<uint32_t>((255 - k) / 4) << 16) | (0x3F00u);
                 drawSolidRect(x + 2.0f, y + 13.0f, x + 14.0f, y + 14.0f, bgCol);
-                uint32_t fgCol = 0xFF000000u | ((uint32_t)(255 - k) << 16) | ((uint32_t)k << 8);
-                drawSolidRect(x + 2.0f, y + 13.0f, x + 2.0f + (float)std::max(0, j), y + 14.0f, fgCol);
+                uint32_t fgCol = 0xFF000000u | (static_cast<uint32_t>(255 - k) << 16) | (static_cast<uint32_t>(k) << 8);
+                drawSolidRect(x + 2.0f, y + 13.0f, x + 2.0f + static_cast<float>(std::max(0, j)), y + 14.0f, fgCol);
             }
         }
 
-        // Stack Count (Exact Mojang offset: x + 19 - 2 - width, y + 6 + 3)
+        // Stack Count
         if (st.count > 1) {
             char buf[8];
-            std::snprintf(buf, sizeof(buf), "%d", (int)st.count);
-            float w = (float)getStringWidth(assets, buf);
+            std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(st.count));
+            float w = static_cast<float>(getStringWidth(assets, buf));
             drawString(assets, buf, x + 17.0f - w, y + 9.0f, 0xFFFFFFFF, true);
         }
     }
 
-    // Mojang GuiContainer Classic Purple-Bordered Tooltip
+    //GuiContainer Classic Purple-Bordered Tooltip
     void drawTooltip(const BetaAssetManager& assets, const std::string& text, float mx, float my) {
         if (text.empty()) return;
-        float w = (float)getStringWidth(assets, text);
+        float w = static_cast<float>(getStringWidth(assets, text));
         float x = mx + 12.0f;
         float y = my - 12.0f;
         if (x + w + 6.0f > scaledW) x = mx - w - 12.0f;
@@ -272,31 +338,164 @@ public:
         drawString(assets, text, x, y, 0xFFFFFFFF, true);
     }
 
-    // Authentic Mojang 2D Paper-Doll Player Preview inside Inventory Black Box (GuiInventory.java)
+    // ========================================================================
+    //GuiInventory.drawGuiContainerBackgroundLayer: True 3D Steve Model!
+    // ========================================================================
     void drawPaperDollPlayer(const BetaAssetManager& assets, float centerX, float feetY, int mouseX, int mouseY) {
-        if (!assets.mobSkins[SKIN_PLAYER]) return;
+        if (!assets.mobSkins[SKIN_PLAYER] || !modelShader) return;
 
-        float lookX = std::clamp((mouseX - centerX) / 40.0f, -1.0f, 1.0f);
-        float lookY = std::clamp((mouseY - (feetY - 46.0f)) / 40.0f, -1.0f, 1.0f);
-        float headShiftX = lookX * 2.5f;
-        float headShiftY = lookY * 1.5f;
+        // ExactGuiInventory mouse-tracking trigonometry:
+        // f5 = (guiLeft + 51) - mouseX;
+        // f6 = (guiTop + 75 - 50) - mouseY;
+        float f5 = centerX - static_cast<float>(mouseX);
+        float f6 = (feetY - 50.0f) - static_cast<float>(mouseY);
 
-        // Legs (UV 4,20..8,32 on 64x32 char.png)
-        drawTexturedRect(assets.mobSkins[SKIN_PLAYER], centerX - 8.0f, feetY - 24.0f, 8.0f, 24.0f, 4, 20, 8, 32, 64, 32);
-        drawTexturedRect(assets.mobSkins[SKIN_PLAYER], centerX,        feetY - 24.0f, 8.0f, 24.0f, 8, 20, 4, 32, 64, 32);
+        float bodyYaw   = std::atan(f5 / 40.0f) * 20.0f;
+        float headYaw   = std::atan(f5 / 40.0f) * 40.0f;
+        float headPitch = -std::atan(f6 / 40.0f) * 20.0f;
+        float relHeadYaw = headYaw - bodyYaw;
 
-        // Torso (UV 20,20..28,32)
-        drawTexturedRect(assets.mobSkins[SKIN_PLAYER], centerX - 8.0f, feetY - 48.0f, 16.0f, 24.0f, 20, 20, 28, 32, 64, 32);
+        float timeSec = static_cast<float>(GetTickCount64() % 100000ULL) * 0.02f;
+        float armSwayZ = (std::cos(timeSec * 0.09f) * 0.05f + 0.05f) * 57.29578f;
+        float armSwayX = (std::sin(timeSec * 0.067f) * 0.05f) * 57.29578f;
 
-        // Arms (UV 44,20..48,32)
-        drawTexturedRect(assets.mobSkins[SKIN_PLAYER], centerX - 15.0f, feetY - 48.0f, 7.0f, 24.0f, 44, 20, 48, 32, 64, 32);
-        drawTexturedRect(assets.mobSkins[SKIN_PLAYER], centerX + 8.0f,  feetY - 48.0f, 7.0f, 24.0f, 48, 20, 44, 32, 64, 32);
+        std::vector<UiModelVertex> verts;
+        verts.reserve(7 * 36);
 
-        // Head (UV 8,8..16,16) + Outer Hat Layer (UV 40,8..48,16)
-        float hx = centerX - 8.0f + headShiftX;
-        float hy = feetY - 64.0f + headShiftY;
-        drawTexturedRect(assets.mobSkins[SKIN_PLAYER], hx, hy, 16.0f, 16.0f, 8, 8, 16, 16, 64, 32);
-        drawTexturedRect(assets.mobSkins[SKIN_PLAYER], hx - 0.5f, hy - 0.5f, 17.0f, 17.0f, 40, 8, 48, 16, 64, 32);
+        // Helper: builds a 6-faced 3D skin box in Steve pixel units (1 block = 16 px, total height = 32 px)
+        // Coordinate convention: +X = model left, -X = model right, +Y = up, +Z = front (facing viewer)
+        auto addModelBox = [&](float pivX, float pivY, float pivZ,
+                               float rotXDeg, float rotYDeg, float rotZDeg,
+                               float offX, float offY, float offZ,
+                               float wPx, float hPx, float dPx,
+                               int texU, int texV, float inflatePx = 0.0f) {
+            float x0 = offX - inflatePx, x1 = offX + wPx + inflatePx;
+            float y0 = offY - inflatePx, y1 = offY + hPx + inflatePx;
+            float z0 = offZ - inflatePx, z1 = offZ + dPx + inflatePx;
+
+            Mat4 xf = Mat4::rotateY(bodyYaw) *
+                      Mat4::translate(pivX, pivY, pivZ) *
+                      Mat4::rotateZ(rotZDeg) *
+                      Mat4::rotateY(rotYDeg) *
+                      Mat4::rotateX(rotXDeg);
+
+            auto xformPt = [&](float lx, float ly, float lz) -> Vec3 {
+                return {
+                    xf.m[0] * lx + xf.m[4] * ly + xf.m[8]  * lz + xf.m[12],
+                    xf.m[1] * lx + xf.m[5] * ly + xf.m[9]  * lz + xf.m[13],
+                    xf.m[2] * lx + xf.m[6] * ly + xf.m[10] * lz + xf.m[14]
+                };
+            };
+
+            auto xformNorm = [&](float nx, float ny, float nz) -> Vec3 {
+                return Vec3{
+                    xf.m[0] * nx + xf.m[4] * ny + xf.m[8]  * nz,
+                    xf.m[1] * nx + xf.m[5] * ny + xf.m[9]  * nz,
+                    xf.m[2] * nx + xf.m[6] * ny + xf.m[10] * nz
+                }.normalized();
+            };
+
+            const float invW = 1.0f / 64.0f;
+            const float invH = 1.0f / 32.0f;
+            int iu = texU, iv = texV;
+            int iw = static_cast<int>(wPx), ih = static_cast<int>(hPx), id = static_cast<int>(dPx);
+
+            auto emitFace = [&](const float pts[4][3], float nx, float ny, float nz, int u0, int v0, int u1, int v1) {
+                Vec3 p0 = xformPt(pts[0][0], pts[0][1], pts[0][2]);
+                Vec3 p1 = xformPt(pts[1][0], pts[1][1], pts[1][2]);
+                Vec3 p2 = xformPt(pts[2][0], pts[2][1], pts[2][2]);
+                Vec3 p3 = xformPt(pts[3][0], pts[3][1], pts[3][2]);
+                Vec3 n  = xformNorm(nx, ny, nz);
+
+                float fu0 = u0 * invW, fv0 = v0 * invH;
+                float fu1 = u1 * invW, fv1 = v1 * invH;
+
+                UiModelVertex q[4] = {
+                    { p0.x, p0.y, p0.z, n.x, n.y, n.z, fu0, fv1, 1.0f, 1.0f, 1.0f, 1.0f },
+                    { p1.x, p1.y, p1.z, n.x, n.y, n.z, fu1, fv1, 1.0f, 1.0f, 1.0f, 1.0f },
+                    { p2.x, p2.y, p2.z, n.x, n.y, n.z, fu1, fv0, 1.0f, 1.0f, 1.0f, 1.0f },
+                    { p3.x, p3.y, p3.z, n.x, n.y, n.z, fu0, fv0, 1.0f, 1.0f, 1.0f, 1.0f }
+                };
+                verts.push_back(q[0]); verts.push_back(q[1]); verts.push_back(q[2]);
+                verts.push_back(q[0]); verts.push_back(q[2]); verts.push_back(q[3]);
+            };
+
+            // Front (+Z)
+            float fS[4][3] = { {x0,y0,z1}, {x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1} };
+            emitFace(fS, 0, 0, 1, iu + id, iv + id, iu + id + iw, iv + id + ih);
+
+            // Back (-Z)
+            float fN[4][3] = { {x1,y0,z0}, {x0,y0,z0}, {x0,y1,z0}, {x1,y1,z0} };
+            emitFace(fN, 0, 0, -1, iu + id + iw + id, iv + id, iu + id + iw + id + iw, iv + id + ih);
+
+            // Model Left (+X)
+            float fE[4][3] = { {x1,y0,z1}, {x1,y0,z0}, {x1,y1,z0}, {x1,y1,z1} };
+            emitFace(fE, 1, 0, 0, iu + id + iw, iv + id, iu + id + iw + id, iv + id + ih);
+
+            // Model Right (-X)
+            float fW[4][3] = { {x0,y0,z0}, {x0,y0,z1}, {x0,y1,z1}, {x0,y1,z0} };
+            emitFace(fW, -1, 0, 0, iu, iv + id, iu + id, iv + id + ih);
+
+            // Top (+Y)
+            float fT[4][3] = { {x0,y1,z1}, {x1,y1,z1}, {x1,y1,z0}, {x0,y1,z0} };
+            emitFace(fT, 0, 1, 0, iu + id, iv, iu + id + iw, iv + id);
+
+            // Bottom (-Y)
+            float fB[4][3] = { {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z1}, {x0,y0,z1} };
+            emitFace(fB, 0, -1, 0, iu + id + iw, iv, iu + id + iw + iw, iv + id);
+        };
+
+        // 1. Head (8x8x8 at neck pivot Y=24) + Outer Hat Layer (8x8x8 inflated by 0.5px)
+        addModelBox(0.0f, 24.0f, 0.0f, headPitch, relHeadYaw, 0.0f, -4.0f, 0.0f, -4.0f, 8.0f, 8.0f, 8.0f, 0, 0, 0.0f);
+        addModelBox(0.0f, 24.0f, 0.0f, headPitch, relHeadYaw, 0.0f, -4.0f, 0.0f, -4.0f, 8.0f, 8.0f, 8.0f, 32, 0, 0.5f);
+
+        // 2. Torso (8x12x4 from Y=12..24)
+        addModelBox(0.0f, 24.0f, 0.0f, 0.0f, 0.0f, 0.0f, -4.0f, -12.0f, -2.0f, 8.0f, 12.0f, 4.0f, 16, 16, 0.0f);
+
+        // 3. Right Arm (-X side, shoulder pivot at -5, 22, 0) & Left Arm (+X side, pivot at +5, 22, 0)
+        addModelBox(-5.0f, 22.0f, 0.0f,  armSwayX, 0.0f, -armSwayZ, -3.0f, -10.0f, -2.0f, 4.0f, 12.0f, 4.0f, 40, 16, 0.0f);
+        addModelBox( 5.0f, 22.0f, 0.0f, -armSwayX, 0.0f,  armSwayZ, -1.0f, -10.0f, -2.0f, 4.0f, 12.0f, 4.0f, 40, 16, 0.0f);
+
+        // 4. Right Leg (-X side, hip pivot at -2, 12, 0) & Left Leg (+X side, hip pivot at +2, 12, 0)
+        addModelBox(-2.0f, 12.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f, -12.0f, -2.0f, 4.0f, 12.0f, 4.0f, 0, 16, 0.0f);
+        addModelBox( 2.0f, 12.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f, -12.0f, -2.0f, 4.0f, 12.0f, 4.0f, 0, 16, 0.0f);
+
+        // Orthographic projection in GUI coordinates (30.0F scale per block -> 1.875 GUI px per skin pixel)
+        // Total height = 32 px * 1.875 = 60 GUI pixels inside the black inventory box
+        Mat4 ortho3D = Mat4::ortho(0.0f, static_cast<float>(scaledW), static_cast<float>(scaledH), 0.0f, -100.0f, 100.0f);
+        Mat4 modelXf = Mat4::translate(centerX, feetY, 50.0f) *
+                       Mat4::scale(1.875f, -1.875f, 1.875f) *
+                       Mat4::rotateX(-10.0f); // Subtle3D camera elevation tilt
+        Mat4 mvp = ortho3D * modelXf;
+
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
+        glUseProgram(modelShader);
+        glUniformMatrix4fv(glGetUniformLocation(modelShader, "u_mvp"), 1, GL_FALSE, mvp.m);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, assets.mobSkins[SKIN_PLAYER]);
+
+        glBindVertexArray(modelVao);
+        glBindBuffer(GL_ARRAY_BUFFER, modelVbo);
+        glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(UiModelVertex), verts.data(), GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(UiModelVertex), (void*)offsetof(UiModelVertex, x));
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(UiModelVertex), (void*)offsetof(UiModelVertex, nx));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(UiModelVertex), (void*)offsetof(UiModelVertex, u));
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(UiModelVertex), (void*)offsetof(UiModelVertex, r));
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(verts.size()));
+
+        // Restore 2D UI pipeline state
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glUseProgram(shader);
     }
 
 private:
@@ -325,8 +524,8 @@ private:
         float curX = x;
 
         for (size_t i = 0; i < text.size(); ++i) {
-            uint8_t c = (uint8_t)text[i];
-            if (c == 0xC2 && i + 1 < text.size() && (uint8_t)text[i + 1] == 0xA7) { i++; c = 0xA7; }
+            uint8_t c = static_cast<uint8_t>(text[i]);
+            if (c == 0xC2 && i + 1 < text.size() && static_cast<uint8_t>(text[i + 1]) == 0xA7) { i++; c = 0xA7; }
             if (c == 0xA7 && i + 1 < text.size()) {
                 char code = text[++i];
                 int idx = -1;
@@ -354,7 +553,7 @@ private:
             batch.push_back({curX + 8.0f, y + 8.0f, u1, v1, r, g, b, a});
             batch.push_back({curX,        y + 8.0f, u0, v1, r, g, b, a});
 
-            curX += (float)assets.charWidths[c];
+            curX += static_cast<float>(assets.charWidths[c]);
         }
 
         if (!batch.empty()) {
@@ -380,7 +579,7 @@ private:
         }
 
         float cx = x + 8.0f, cy = y + 8.0f;
-        const float eps = 0.001f; // Half-texel safety inset on 256x256 atlas
+        const float eps = 0.001f;
         auto sprUV = [eps](uint16_t s, float& u0, float& v0, float& u1, float& v1) {
             u0 = (s % 16) / 16.0f + eps;
             v0 = (s / 16) / 16.0f + eps;
@@ -445,6 +644,6 @@ private:
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(UiVertex), (void*)offsetof(UiVertex, u));
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(UiVertex), (void*)offsetof(UiVertex, r));
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)count);
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(count));
     }
 };

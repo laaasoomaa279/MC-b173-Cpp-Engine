@@ -11,9 +11,6 @@
 #include <cstdio>
 #include <algorithm>
 
-// ============================================================================
-// Minecraft Beta 1.7.3 HUD, F3 Profiler, Containers & TMI (GuiIngame.java 1:1)
-// ============================================================================
 
 enum ActiveGuiScreen : uint8_t {
     GUI_NONE       = 0,
@@ -94,7 +91,7 @@ public:
         craftOutput = recipes.matchCraftingGrid(craftGrid, dim, dim);
     }
 
-    // Mojang GuiIngame.renderGameOverlay (Exact Beta 1.7.3 HUD & F3 Screen)
+    //GuiIngame.renderGameOverlay (Exact Beta 1.7.3 HUD & F3 Screen)
     void renderHUD(BetaUiRenderer& ui, const WorldMap& world, const BetaAssetManager& assets,
                    const PlayerPhysics& player, const BetaEntityManager& entities, float fps) {
         fpsHistory[fpsHistIdx] = fps;
@@ -103,7 +100,7 @@ public:
         float cx = ui.scaledW * 0.5f;
         float bottom = (float)ui.scaledH;
 
-        // 1. Crosshair with Mojang exact XOR color inversion
+        // 1. Crosshair withexact XOR color inversion
         if (activeScreen == GUI_NONE && assets.iconsTex) {
             glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
             ui.drawTexturedRect(assets.iconsTex, std::floor(cx - 8.0f), std::floor(ui.scaledH * 0.5f - 8.0f), 16.0f, 16.0f, 0, 0, 16, 16);
@@ -172,7 +169,7 @@ public:
             }
         }
 
-        // 4. Mojang Exact Beta 1.7.3 F3 Debug Screen + Frame Profiler Graph
+        // 4.Exact Beta 1.7.3 F3 Debug Screen + Frame Profiler Graph
         if (showDebugF3) {
             char line[160];
             std::snprintf(line, sizeof(line), "Minecraft Beta 1.7.3 (%.0f fps, 0 chunk updates)", fps);
@@ -185,7 +182,7 @@ public:
                           entities.mobs.size(), entities.mobs.size() + entities.droppedItems.size(), entities.droppedItems.size());
             ui.drawString(assets, line, 2, 22, 0xFFFFFFFF);
 
-            // Top-Right Memory Readout (Exact Mojang GuiIngame.java)
+            // Top-Right Memory Readout (ExactGuiIngame.java)
             PROCESS_MEMORY_COUNTERS pmc{};
             if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
                 size_t usedMB = pmc.WorkingSetSize / (1024 * 1024);
@@ -236,7 +233,7 @@ public:
         }
     }
 
-    // Mojang GuiContainer.drawScreen (Inventory 2x2 + Player Preview, Crafting 3x3, Furnace, Chest + TMI)
+    //GuiContainer.drawScreen (Inventory 2x2 + Player Preview, Crafting 3x3, Furnace, Chest + TMI)
     void renderContainerScreen(BetaUiRenderer& ui, WorldMap& world, const BetaAssetManager& assets,
                                const BetaRecipeRegistry& recipes, int mouseX, int mouseY,
                                bool leftClick, bool rightClick) {
