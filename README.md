@@ -71,7 +71,7 @@ flowchart TB
     SIM -->|Chunk Requests| WPOOL
     WPOOL --> NOISE & MCR & MESH
     MESH -->|MPSC Ready Queue| OPQ & TRN
-    SIM -->|Linear Interpolation α| GPU
+    SIM -->|Linear Interpolation α | GPU
     SIM -->|3D Sound Events| AUDIO
 
 ```
