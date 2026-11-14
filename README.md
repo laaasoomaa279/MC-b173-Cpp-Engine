@@ -31,7 +31,7 @@ A lightweight voxel engine written in C++20, with no external dependencies, buil
 | **4** | **[✨ 4. What Already Works Brilliantly]([#-4-what-already-works-brilliantly])** | (#-4-what-already-works-brilliantly) |
 | **5** | **[🗂️ 5. Complete Repository File Tree]([#-5-complete-repository-file-tree])** | (#-5-complete-repository-file-tree) |
 | **6** | **[🛠️ 6. Building, Running & Controls]([#-6-building-running--controls])** | (#-6-building-running--controls) |
-| **7** | **[🗺️ 7. Roadmap to 100% Parity]([[#-7-roadmap-to-100-parity]](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#%EF%B8%8F-7-roadmap-to-100-parity))** | (#-7-roadmap-to-100-parity) |
+| **7** | **[🗺️ 7. Roadmap to 100% Parity](https://github.com/laaasoomaa279/MC-b173-Cpp-Engine#%EF%B8%8F-7-roadmap-to-100-parity)** | (#-7-roadmap-to-100-parity) |
 
 ---
 ## 🖼️ 1. Visual Architecture & Pipeline
